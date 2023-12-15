@@ -1,0 +1,362 @@
+{
+	"name": "PL_Generic_Ingest_Executor_copy",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup Config Table",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": "/****** Script for SelectTopNRows command from SSMS  ******/\nSELECT *\n      \n  FROM dbo.ControlTableIntegrated where IsActive='yes'",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_SQL_Config1",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach Record to Ingest",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Lookup Config Table",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup Config Table').output.value",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "If Condition ChangeType is CDC",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'CDC'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Execute Pipeline CDC",
+										"type": "ExecutePipeline",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_GENERIC_SQL_CDC_INGEST",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"ServerName": {
+													"value": "@item().SourceServerName",
+													"type": "Expression"
+												},
+												"DBName": {
+													"value": "@item().SourceDBName",
+													"type": "Expression"
+												},
+												"SchemaName": {
+													"value": "@item().SchemaName",
+													"type": "Expression"
+												},
+												"TableName": {
+													"value": "@item().SourceTableName",
+													"type": "Expression"
+												},
+												"LSNEndTime": {
+													"value": "@utcNow('yyyy-MM-dd HH:mm:ss:ff')",
+													"type": "Expression"
+												},
+												"ADLSContainerName": {
+													"value": "@item().ADLSContainerName",
+													"type": "Expression"
+												},
+												"StageDirectoryName": {
+													"value": "@item().StagingContainer",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition ChangeType is ChangeTracking",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition ChangeType is CDC",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'CHANGE TRACKING'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Execute Pipeline Change Tracking",
+										"type": "ExecutePipeline",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_Generic_SQL_CHANGETRACKING",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"ServerName": {
+													"value": "@item().SourceServerName\n",
+													"type": "Expression"
+												},
+												"DBName": {
+													"value": "@item().SourceDBName",
+													"type": "Expression"
+												},
+												"SchemaName": {
+													"value": "@item().SchemaName",
+													"type": "Expression"
+												},
+												"TableName": {
+													"value": "@item().SourceTableName",
+													"type": "Expression"
+												},
+												"ADLSContainerName": {
+													"value": "@item().ADLSContainerName",
+													"type": "Expression"
+												},
+												"StageDirectoryName": {
+													"value": "@item().StagingContainer",
+													"type": "Expression"
+												},
+												"ChangeColumnName": {
+													"value": "@item().DeltaColumnName",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition ChangeType is WaterMark",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition ChangeType is ChangeTracking",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'WATERMARK'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Execute Pipeline WaterMark",
+										"type": "ExecutePipeline",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_GENERIC_INGEST_WATERMARK",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"ServerName": {
+													"value": "@item().SourceServerName\n",
+													"type": "Expression"
+												},
+												"DBName": {
+													"value": "@item().SourceDBName",
+													"type": "Expression"
+												},
+												"SchemaName": {
+													"value": "@item().SchemaName",
+													"type": "Expression"
+												},
+												"TableName": {
+													"value": "@item().SourceTableName",
+													"type": "Expression"
+												},
+												"ADLSContainerName": {
+													"value": "@item().ADLSContainerName",
+													"type": "Expression"
+												},
+												"StageDirectoryName": {
+													"value": "@item().StagingContainer",
+													"type": "Expression"
+												},
+												"WaterMarkColumnName": {
+													"value": "@item().WaterMarkColumnName",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition ChangeType is Full",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition ChangeType is WaterMark",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'FULL'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Execute Pipeline Full",
+										"type": "ExecutePipeline",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_Generic_Full_Load",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"ServerName": {
+													"value": "@item().SourceServerName\n",
+													"type": "Expression"
+												},
+												"DBName": {
+													"value": "@item().SourceDBName",
+													"type": "Expression"
+												},
+												"SchemaName": {
+													"value": "@item().SchemaName",
+													"type": "Expression"
+												},
+												"TableName": {
+													"value": "@item().SourceTableName",
+													"type": "Expression"
+												},
+												"ADLSContainerName": {
+													"value": "@item().ADLSContainerName",
+													"type": "Expression"
+												},
+												"ArchivalContainerName": {
+													"value": "@item().StagingContainer",
+													"type": "Expression"
+												},
+												"PartitionUpperBound": {
+													"value": "@item().PartitionUpperBound",
+													"type": "Expression"
+												},
+												"PartitionLowerBound": {
+													"value": "@item().PartitionLowerBound",
+													"type": "Expression"
+												},
+												"PartitionColumnName": {
+													"value": "@item().PartitionColumnName",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "If Condition ChangeType is File",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "If Condition ChangeType is Full",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'FILE'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Execute Pipeline File",
+										"type": "ExecutePipeline",
+										"dependsOn": [],
+										"userProperties": [],
+										"typeProperties": {
+											"pipeline": {
+												"referenceName": "PL_Generic_File_Load",
+												"type": "PipelineReference"
+											},
+											"waitOnCompletion": true,
+											"parameters": {
+												"SourceFolder": {
+													"value": "@item().FolderPath",
+													"type": "Expression"
+												},
+												"ADLSContainerName": {
+													"value": "@item().ADLSContainerName",
+													"type": "Expression"
+												},
+												"ADLSDirectoryName": {
+													"value": "@item().ADLSStoragePath",
+													"type": "Expression"
+												}
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-02-24T21:08:22Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

@@ -1,0 +1,23 @@
+{
+	"name": "AzureSynapseArtifactsPOC",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
+	"properties": {
+		"parameters": {
+			"workspaceurl": {
+				"type": "string",
+				"defaultValue": "https://synapsepoclrn.dev.azuresynapse.net"
+			},
+			"WorkspaceresourceID": {
+				"type": "string",
+				"defaultValue": "/subscriptions/5aa5ae5a-e1f6-4ed0-b06f-ddd3718184e8/resourceGroups/rgsynapse/providers/Microsoft.Synapse/workspaces/synapsepoclrn"
+			}
+		},
+		"annotations": [],
+		"type": "AzureSynapseArtifacts",
+		"typeProperties": {
+			"endpoint": "@{linkedService().workspaceurl}",
+			"authentication": "MSI",
+			"workspaceResourceId": "@{linkedService().WorkspaceresourceID}"
+		}
+	}
+}

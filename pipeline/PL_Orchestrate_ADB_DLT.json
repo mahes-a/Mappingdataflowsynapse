@@ -1,0 +1,217 @@
+{
+	"name": "PL_Orchestrate_ADB_DLT",
+	"properties": {
+		"activities": [
+			{
+				"name": "Web retrieve from AKV",
+				"type": "WebActivity",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": "https://keyvltlrn.vault.azure.net/secrets/ADBPAT/8e31b2a946104ce28e7c8fb82c944c31?api-version=7.3",
+					"method": "GET",
+					"authentication": {
+						"type": "MSI",
+						"resource": "https://vault.azure.net"
+					}
+				}
+			},
+			{
+				"name": "Set PAT",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Web retrieve from AKV",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "ADBPAT",
+					"value": {
+						"value": "@activity('Web retrieve from AKV').output.value",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Call DLT Pipeline",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Set PAT",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": "https://adb-2023374655886401.1.azuredatabricks.net/api/2.0/pipelines/90a4ae70-f33c-4b04-8d9f-de12c0215204/updates",
+					"method": "POST",
+					"headers": {
+						"Authorization ": {
+							"value": "@concat('Bearer ',variables('ADBPAT'))",
+							"type": "Expression"
+						}
+					},
+					"body": {
+						"full_refresh": "true",
+						"configuration": {
+							"DynamicDDLDLT.cdctableName": "cdc_data.userstest2",
+							"DynamicDDLDLT.targettablename": "targetcdctest5",
+							"DynamicDDLDLT.keyCOl": "userId"
+						},
+						"target": "livetables"
+					}
+				}
+			},
+			{
+				"name": "Set variable job output",
+				"type": "SetVariable",
+				"dependsOn": [
+					{
+						"activity": "Call DLT Pipeline",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "JobOutPutVariable",
+					"value": {
+						"value": "@activity('Call DLT Pipeline').output.update_id",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Until Job completes",
+				"type": "Until",
+				"dependsOn": [
+					{
+						"activity": "Set variable job output",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@or(\nequals(toUpper(variables('JobStatus')),'COMPLETED'),\nequals(toUpper(variables('JobStatus')),'FAILED')\n)",
+						"type": "Expression"
+					},
+					"activities": [
+						{
+							"name": "Check Job run status",
+							"type": "WebActivity",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"url": {
+									"value": "@concat(\n'https://adb-2023374655886401.1.azuredatabricks.net/api/2.0/pipelines/90a4ae70-f33c-4b04-8d9f-de12c0215204/updates','/',\nvariables('JobOutPutVariable')\n)",
+									"type": "Expression"
+								},
+								"method": "GET",
+								"headers": {
+									"Authorization": {
+										"value": "@concat('Bearer ',variables('ADBPAT'))",
+										"type": "Expression"
+									}
+								}
+							}
+						},
+						{
+							"name": "Set variable job status",
+							"type": "SetVariable",
+							"dependsOn": [
+								{
+									"activity": "Check Job run status",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"variableName": "JobStatus",
+								"value": {
+									"value": "@activity('Check Job run status').output.update.state",
+									"type": "Expression"
+								}
+							}
+						},
+						{
+							"name": "Wait1",
+							"type": "Wait",
+							"dependsOn": [
+								{
+									"activity": "Set variable job status",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"waitTimeInSeconds": 30
+							}
+						}
+					],
+					"timeout": "0.12:00:00"
+				}
+			}
+		],
+		"variables": {
+			"ADBPAT": {
+				"type": "String"
+			},
+			"JobOutPutVariable": {
+				"type": "String"
+			},
+			"JobStatus": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2023-02-24T21:08:21Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

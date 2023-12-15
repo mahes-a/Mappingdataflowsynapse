@@ -1,0 +1,89 @@
+{
+	"name": "Integration_copy_1000",
+	"properties": {
+		"activities": [
+			{
+				"name": "Copy REST Paginated url to adls gen2",
+				"type": "Copy",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "RestSource",
+						"httpRequestTimeout": "00:01:40",
+						"requestInterval": "00.00:00:00.010",
+						"requestMethod": "GET",
+						"paginationRules": {
+							"AbsoluteUrl.{id}": "RANGE:1:999:1"
+						}
+					},
+					"sink": {
+						"type": "JsonSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "JsonWriteSettings"
+						}
+					},
+					"enableStaging": false
+				},
+				"inputs": [
+					{
+						"referenceName": "RestResource",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "DS_Json",
+						"type": "DatasetReference"
+					}
+				]
+			},
+			{
+				"name": "copy to sharepoint via logic app",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Copy REST Paginated url to adls gen2",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"url": "https://prod-77.eastus.logic.azure.com:443/workflows/12429a922673416a87f15f590cff3c0b/triggers/manual/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=LK1D-AKnCXtqaqPu8wgB17RstLaBy66RVjYRLJ-bKvk",
+					"method": "POST",
+					"body": {
+						"value": "@concat('{','}')",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"restendpoint": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2022-12-13T21:44:25Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

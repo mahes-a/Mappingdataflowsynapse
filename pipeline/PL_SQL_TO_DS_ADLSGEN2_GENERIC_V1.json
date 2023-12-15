@@ -1,0 +1,431 @@
+{
+	"name": "PL_SQL_TO_DS_ADLSGEN2_GENERIC_V1",
+	"properties": {
+		"activities": [
+			{
+				"name": "TablesToCopy",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "lookup  tables to be copied",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('lookup  tables to be copied').output.value",
+						"type": "Expression"
+					},
+					"batchCount": 20,
+					"activities": [
+						{
+							"name": "Incremental Flow",
+							"type": "IfCondition",
+							"dependsOn": [],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'Incremental'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "LookupCurrentChangeTrackingVersionActivity",
+										"type": "Lookup",
+										"dependsOn": [
+											{
+												"activity": "LookupLastChangeTrackingVersionActivity",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": "SELECT CHANGE_TRACKING_CURRENT_VERSION() as CurrentChangeTrackingVersion",
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"dataset": {
+												"referenceName": "DS_SQL_Generic",
+												"type": "DatasetReference",
+												"parameters": {
+													"ServerName": "@item().SourceServerName",
+													"DBName": "@item().SourceDBName",
+													"SchemaName": "@item().SchemaName",
+													"TableName": "@item().SourceTableName"
+												}
+											}
+										}
+									},
+									{
+										"name": "LookupLastChangeTrackingVersionActivity",
+										"type": "Lookup",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "\nSelect * from table_store_ChangeTracking_version where TableName= '@{item().SourceTableName}'",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"dataset": {
+												"referenceName": "DS_SQL_Config",
+												"type": "DatasetReference"
+											}
+										}
+									},
+									{
+										"name": "Incremental Data Copy",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "LookupCurrentChangeTrackingVersionActivity",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "SELECT c.*,CT.SYS_CHANGE_VERSION, SYS_CHANGE_OPERATION , CT.@{item().DeltaColumnName} as  'PrimaryKeyValue'\n\nfrom @{item().SourceTableName}  c\n\nRIGHT OUTER JOIN \n\nCHANGETABLE(CHANGES @{item().SourceTableName} , @{activity('LookupLastChangeTrackingVersionActivity').output.firstRow.SYS_CHANGE_VERSION}) AS CT \n\nON c.@{item().DeltaColumnName}  = CT.@{item().DeltaColumnName}  where CT.SYS_CHANGE_VERSION <= @{activity('LookupCurrentChangeTrackingVersionActivity').output.firstRow.CurrentChangeTrackingVersion}\n",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "ParquetSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "ParquetWriteSettings"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_Generic",
+												"type": "DatasetReference",
+												"parameters": {
+													"ServerName": "@item().SourceServerName",
+													"DBName": "@item().SourceDBName",
+													"SchemaName": "@item().SchemaName",
+													"TableName": "@item().SourceTableName"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLSGEN2",
+												"type": "DatasetReference",
+												"parameters": {
+													"ADLSContainerName": "@item().ADLSContainerName",
+													"DirectoryName": "@concat(item().SourceTableName,'/','year=',formatDateTime(utcnow(),'yyyy'),'/','month=',formatDateTime(utcnow(),'MM'),'/','day=',formatDateTime(utcnow(),'dd'))"
+												}
+											}
+										]
+									},
+									{
+										"name": "updatechnagetracking",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Incremental Data Copy",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[Update_ChangeTracking_Version]",
+											"storedProcedureParameters": {
+												"CurrentTrackingVersion": {
+													"value": {
+														"value": "@activity('LookupCurrentChangeTrackingVersionActivity').output.firstRow.CurrentChangeTrackingVersion",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"TableName": {
+													"value": {
+														"value": "@item().SourceTableName",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "DS_SQL_CONFIG",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						},
+						{
+							"name": "Full load flow",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Incremental Flow",
+									"dependencyConditions": [
+										"Completed"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@bool(equals(item().CopyMode,'Full'))",
+									"type": "Expression"
+								},
+								"ifTrueActivities": [
+									{
+										"name": "Copy data to ADLS",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"queryTimeout": "02:00:00",
+												"partitionOption": "DynamicRange",
+												"partitionSettings": {
+													"partitionColumnName": {
+														"value": "@{item().PartitionColumnName}",
+														"type": "Expression"
+													},
+													"partitionUpperBound": {
+														"value": "@item().PartitionUpperBound",
+														"type": "Expression"
+													},
+													"partitionLowerBound": {
+														"value": "@item().PartitionLowerBound",
+														"type": "Expression"
+													}
+												}
+											},
+											"sink": {
+												"type": "ParquetSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings",
+													"blockSizeInMB": 100
+												},
+												"formatSettings": {
+													"type": "ParquetWriteSettings"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_Generic",
+												"type": "DatasetReference",
+												"parameters": {
+													"ServerName": "@item().SourceServerName",
+													"DBName": "@item().SourceDBName",
+													"SchemaName": "@item().SchemaName",
+													"TableName": "@item().SourceTableName"
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLSGEN2",
+												"type": "DatasetReference",
+												"parameters": {
+													"ADLSContainerName": "@item().ADLSContainerName",
+													"DirectoryName": {
+														"value": "@concat(item().SourceDBName,'/',item().SourceTableName)",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "Insert Step",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Copy data to ADLS",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_insert_audit_logs]",
+											"storedProcedureParameters": {
+												"duration": {
+													"value": {
+														"value": "@activity('Copy data to ADLS').output.copyDuration",
+														"type": "Expression"
+													},
+													"type": "Int32"
+												},
+												"pipelinename": {
+													"value": {
+														"value": "@pipeline().Pipeline",
+														"type": "Expression"
+													},
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "DS_SQL_CONFIG",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "UpdateStatus",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Insert Step",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_update_status]",
+											"storedProcedureParameters": {
+												"pipelinename": {
+													"value": "name",
+													"type": "String"
+												},
+												"status": {
+													"value": "success",
+													"type": "String"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "DS_SQL_CONFIG",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "lookup  tables to be copied",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": "select * FROM dbo.ControlTable",
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_SQL_Config",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			}
+		],
+		"annotations": [],
+		"lastPublishTime": "2023-02-15T00:32:39Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

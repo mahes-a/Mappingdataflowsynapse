@@ -1,0 +1,6 @@
+{
+	"name": "ADFSHIRRuntime",
+	"properties": {
+		"type": "SelfHosted"
+	}
+}
