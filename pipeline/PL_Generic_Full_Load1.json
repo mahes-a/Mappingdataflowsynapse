@@ -455,17 +455,19 @@
 			},
 			"PartitionUpperBound": {
 				"type": "string",
-				"defaultValue": "2023-12-31T19:16:53.000Z"
+				"defaultValue": "2023-12-31T19:16:53Z"
 			},
 			"PartitionLowerBound": {
 				"type": "string",
-				"defaultValue": "2008-12-31T19:16:53.000Z"
+				"defaultValue": "2008-12-31T19:16:53Z"
 			},
 			"PartitionColumnName": {
 				"type": "string",
 				"defaultValue": "lpep_pickup_datetime"
 			}
 		},
-		"annotations": []
-	}
+		"annotations": [],
+		"lastPublishTime": "2025-01-23T17:51:46Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
 }

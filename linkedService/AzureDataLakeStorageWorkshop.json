@@ -1,5 +1,6 @@
 {
 	"name": "AzureDataLakeStorageWorkshop",
+	"type": "Microsoft.DataFactory/factories/linkedservices",
 	"properties": {
 		"annotations": [],
 		"type": "AzureBlobFS",
@@ -10,6 +11,5 @@
 			"referenceName": "integrationRuntime7",
 			"type": "IntegrationRuntimeReference"
 		}
-	},
-	"type": "Microsoft.DataFactory/factories/linkedservices"
+	}
 }
